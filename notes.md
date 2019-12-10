@@ -2,8 +2,12 @@
 title: How Does Svelte Actually Work? part 1
 published: true
 description: A conversational, thinking-out-loud tour of the JavaScript that Svelte outputs
-tags: svelte
+tags: svelte, javascript
 ---
+Here's part 2:
+
+{% link https://dev.to/zev/how-does-svelte-actually-work-part-2-3gbp %}
+
 A friend put Svelte on the map for me this summer. Rather than tout its performance relative to the frameworks of the day, he touted the bite-sizedness and readability of the JavaScript it generates when compiled. 
 
 I'm writing a course that uses Svelte (and FastAPI and some other snazzy things) and am realizing that I could use some deeper knowledge of how Svelte operates: Specifically, how the code works that Svelte compiles to.

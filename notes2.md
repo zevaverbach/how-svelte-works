@@ -1,10 +1,14 @@
 ---
 title: How Does Svelte Actually Work? part 2
-published: false
+published: true
 description: A conversational, thinking-out-loud tour of the JavaScript that Svelte outputs... part deux
-tags: svelte javascript
+tags: svelte, javascript
 ---
-[Here's part 1](https://dev.to/zev/how-does-svelte-actually-work-part-1-j9m), and here's the repository for what we've done so far:
+Here's part 1:
+
+{% link https://dev.to/zev/how-does-svelte-actually-work-part-1-j9m %}
+
+and here's the repository for what we've done so far:
 
 {% github zevaverbach/how-svelte-works no-readme %} 
 
@@ -619,13 +623,13 @@ class App extends SvelteComponent {
     }
 }
 ```
-What madness is this?! The props have inexplicably swapped their indices. Restraining myself from tweeting at Rich Harris about this one... for now. Maybe it will explain itself as we go.
+The props have inexplicably swapped their indices. What madness is this?! Restraining myself from tweeting at Svelte about this one... for now. Maybe it will explain itself as we go.
 
 # The Most Basic Knowledge We're Missing
 
 I still don't know what actually triggers the function `update` to run! 
 
-As a reminder, we studied `update` in part 1 because it was the only place where `$$fragment`—the object containing the methods for creating, destroying, and updating the rendered elements—was updated. As a further reminder, the key line in `update` calls `$$.fragment.p($$.ctx, $$.dirty)`, `fragment.p` being short for `fragment.update`: It checks the value of `dirty` and potentially updates the node identified by `dirty`, if the provided new value differs from the node's current one.
+As a reminder, we studied `update` in part 1 because it was the only place where `$$.fragment`—the object containing the methods for creating, destroying, and updating the rendered elements—was updated. As a further reminder, the key line in `update` calls `$$.fragment.p($$.ctx, $$.dirty)`, `fragment.p` being short for `fragment.update`: It checks the value of `dirty` and potentially updates the node identified by `dirty`, if the provided new value differs from the node's current one.
 
 ```js
 ...
@@ -651,7 +655,7 @@ function create_fragment(ctx) {
 
 ```
 
-Conveniently, it appears the function `update` (distinct from the method `$$.fragment.p`) is called in only one place:
+Conveniently, the function `update` (distinct from the method `$$.fragment.p`) is called in only one place:
 
 ```js
 function flush() {
@@ -743,9 +747,15 @@ Thank you to my fellow Recurse Center alum Thomas Ballinger for demystifying thi
 
 {% twitter 1204039246421487616 %}
 
-(Yup, it was a scope monster, or to put it another way, "scope".)
+Yup, it was a scope monster, or to put it another way, "scope". To spell it out, that 👆👆👆 `ready = true` takes effect for the `ready` inside the anonymous function's body, well before it's called as `$$invalidate`.
 
-Given that truthiness, this means when `invalidateProp` is called, `make_dirty` gets called with the `App` instance for `component` and the _index_ of whatever prop has been modified.
+Here's more clarification from Svelte themselves:
+
+{% twitter 1204183558912401408 %}
+
+🤔 Methinks this will make more sense when I'm older. I mean, in part X of our little adventure...
+
+Okay then, `ready` is true for our purposes, which means when `invalidateProp` is called, `make_dirty` gets called with the `App` instance for `component` and the _index_ of whatever prop has been modified. So, something like `make_dirty(App, 1)`.
 
 The function `make_dirty`
 
@@ -754,14 +764,23 @@ The function `make_dirty`
 3) updates `component.$$.dirty` 
 
 ```js
-dirty_components.push(component);
-schedule_update();
-component.$$.dirty.fill(0);
+function make_dirty(component, i) {
+    ...
+    dirty_components.push(component);
+    schedule_update();
+    component.$$.dirty.fill(0);
+    ...
+}
+...
+function schedule_update() {
+    ...
+    resolved_promise.then(flush)
+}
 ```
 
 So we've found where `dirty_components` is mutated, and as a bonus, where `flush` gets called (`schedule_update`).
 
-We'll study the `Array.fill` call in a moment, but returning to `flush`'s definition, it appears that `dirty_components` is being used as a queue:
+We'll study the `Array.fill` later, but returning to `flush`'s definition, it appears that `dirty_components` is being used as a queue:
 
 ```js
 const component = dirty_components.shift();
@@ -777,11 +796,11 @@ We nearly have the full picture of how prop changes make their way through `bund
 
 ### What is `$set` For???
 
-`app.$set` is never called in our app: It appears to be a debugging utility, or maybe a hook for external tools. So this function isn't part of the pipeline of functions handling prop changes.
+`app.$set` is never called in our app: It appears to be a debugging utility, or maybe a hook for external tools. So this function isn't part of the pipeline of functions handling prop changes. Sorry about that; one day the knowledge we built about `$set` will have its moment, I assure you! 
 
 ### So Where? Sneaky Succinctness 
 
-It took me a bit of `console.log`-ging to realize where the pipeline begins:
+It took me a bit of `console.log`-ing to realize where the pipeline begins:
 
 ```js
     $$.ctx = instance
@@ -808,7 +827,7 @@ It isn't clear to me at all why this anonymous function runs more than once (on 
 
 Which functions like so:
 
-![Animated GIF showing that when you click the number-incrementing button, it changes from 42 to the word "default" and remains so after additional presses](/Users/zev/Downloads/2019-12-09 15.33.11.gif)
+![Animated GIF showing that when you click the number-incrementing button, it changes from 42 to the word "default" and remains so after additional presses](https://thepracticaldev.s3.amazonaws.com/i/pav1s7ng13ebq3op5ij8.gif)
 
 This is a bit sneaky, stuffing a variable reassignment inside a function call! Nevertheless, we now have the pipeline mapped:
 
@@ -822,7 +841,8 @@ This is a bit sneaky, stuffing a variable reassignment inside a function call! N
 5) `schedule_update`: `resolved_promise.then(flush);` (equivalent to `flush()`)
 6) `flush`: `while (dirty_components.length) update(component.$$);`
 7) `update`: `$$.fragment.p($$.ctx, $$.dirty);`
-8) `$$.fragment.p`: `if (dirty & /*name*/ 2) set_data(t1, /*name*/ ctx[1]);`
+8) `$$.fragment.p`: `if (dirty & /*number*/ 1) set_data(t5, /*number*/ ctx[0]);
+`
 9) `set_data`: if `(text.data !== data) text.data = data;`
 
 A note about `resolved_promised.then`: It _isn't_ exactly the same as calling `flush`, as even though `schedule_update` is called before `component.$$.dirty` is mutated, that mutation has taken place by the time `flush` executes here. The mechanism for this isn't clear to me yet.
@@ -844,26 +864,32 @@ function create_fragment(ctx) {
     }
 ...
 }
+```
 
 1) *click*
 2) `instance`: `const click_handler = () => $$invalidate(0, number += 1);`
 3) 1-9 above
 
-```
+# Next Time
 
-
-# Still Outstanding Questions
+Join us next time for the further adventures of Svelte Spelunker! Discover the secrets of the runtime, such as
 
 1) How does `bundle.js` change with increasing app complexity? Multiple components, for example, or dynamically re-rendering props/state.
-2) Can `dirty` ever contain anything besides a single integer? In other words, are elements updated one after the next, or can `update` sometimes operate on more than one element at a run?
+2) Can `dirty` ever contain anything besides a single integer? In other words, are elements updated one after the next ("ATOMIC"), or can `update` sometimes operate on more than one element at a run?
 3) When are components and elements destroyed? Are Svelte and Rollup as efficient about unnecessary re-renders as billed?
 4) Is it a security problem that the user can directly manipulate the state from a browser's JavaScript console?
 
-# New Questions
-1) how do `$$.bound` and `ready` figure into `init`?
-2) This has been there all along, but why the `space()`s in `block`?
-3) What is `outroing`? An inside joke? Obscure British slang? Both? 🎩
-4) Why does Rollup/Svelte compiler include "name" in the $set binding (in `instance`) when it currnetly will never be mutated?
-5) Why did `number` and `name` swap position in the call to `init` when `number` got attached to an event listener?
-6) What's this business doing exactly? `component.$$.dirty[(i / 31) | 0] |= (1 << (i % 31));`
+## New Questions
+
+1) What's up with step 1 of the props pipeline? How and why does it run when a prop changes? 
+2) how do `$$.bound` and `ready` figure into `init`?
+3) This has been there all along, but why the `space()`s in `block`?
+4) What is `outroing`? An inside joke? Obscure British slang? Both? 🎩
+5) Why does `$set` even exist?  Hint:
+
+{% twitter 1204182586823720964 %}
+
+5) Why does Rollup/Svelte compiler include "name" in the $set binding (in `instance`) when it currently will never be mutated?
+6) Why did `number` and `name` swap position in the call to `init` when `number` got attached to an event listener?
+7) What's this business doing exactly? `component.$$.dirty[(i / 31) | 0] |= (1 << (i % 31));`
 
